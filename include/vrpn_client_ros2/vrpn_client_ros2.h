@@ -1,147 +1,136 @@
-/**
-*
-*  \author     Paul Bovbel <pbovbel@clearpathrobotics.com>
-*  \copyright  Copyright (c) 2015, Clearpath Robotics, Inc.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions are met:
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*     * Redistributions in binary form must reproduce the above copyright
-*       notice, this list of conditions and the following disclaimer in the
-*       documentation and/or other materials provided with the distribution.
-*     * Neither the name of Clearpath Robotics, Inc. nor the
-*       names of its contributors may be used to endorse or promote products
-*       derived from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-* ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-* WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-* DISCLAIMED. IN NO EVENT SHALL CLEARPATH ROBOTICS, INC. BE LIABLE FOR ANY
-* DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-* (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-* LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-* ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-* (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-* SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*
-* Please send comments, questions, or patches to code@clearpathrobotics.com
-*
-*/
+// Copyright 2015 Clearpath Robotics, Inc.
+// Copyright 2026 TDC
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the conditions of the BSD
+// 3-Clause license are met.
 
-#ifndef VRPN_CLIENT_ROS_VRPN_CLIENT_ROS_H
-#define VRPN_CLIENT_ROS_VRPN_CLIENT_ROS_H
+#ifndef VRPN_CLIENT_ROS2__VRPN_CLIENT_ROS2_H_
+#define VRPN_CLIENT_ROS2__VRPN_CLIENT_ROS2_H_
 
-#include "vrpn_client_ros2/vrpn_client_ros2.h"
-
-#include "rclcpp/rclcpp.hpp"
-#include "geometry_msgs/msg/pose_stamped.hpp"
-#include "geometry_msgs/msg/twist_stamped.hpp"
-#include "geometry_msgs/msg/accel_stamped.hpp"
-#include "geometry_msgs/msg/transform_stamped.hpp"
-#include <tf2_ros/transform_broadcaster.h>
-
-#include <vrpn_Tracker.h>
-#include <vrpn_Connection.h>
-#include <map>
+#include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+#include "geometry_msgs/msg/accel_stamped.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+#include "geometry_msgs/msg/transform_stamped.hpp"
+#include "geometry_msgs/msg/twist_stamped.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "tf2_ros/transform_broadcaster.h"
+#include "vrpn_Connection.h"
+#include "vrpn_Tracker.h"
 
 namespace vrpn_client_ros2
 {
 
-  typedef std::shared_ptr<vrpn_Connection> ConnectionPtr;
-  typedef std::shared_ptr<vrpn_Tracker_Remote> TrackerRemotePtr;
+using ConnectionPtr = std::shared_ptr<vrpn_Connection>;
+using TrackerRemotePtr = std::shared_ptr<vrpn_Tracker_Remote>;
 
-  class VrpnTrackerRos
-  {
-  public:
+struct TrackerOptions
+{
+  std::string frame_id{"world"};
+  std::string topic_prefix;
+  std::string pose_topic{"pose"};
+  std::string twist_topic{"twist"};
+  std::string accel_topic{"accel"};
+  bool use_server_time{false};
+  bool broadcast_tf{true};
+  bool process_sensor_id{false};
+};
 
-    typedef std::shared_ptr<VrpnTrackerRos> Ptr;
-    /**
-     * Create and initialize VrpnTrackerRos using an existing underlying VRPN connection object. The underlying
-     * connection object is responsible for calling the tracker's mainloop.
-     */
-    VrpnTrackerRos(std::string tracker_name, ConnectionPtr connection, rclcpp::Node::SharedPtr nh);
+class VrpnTrackerRos
+{
+public:
+  using Ptr = std::shared_ptr<VrpnTrackerRos>;
 
-    /**
-     * Create and initialize VrpnTrackerRos, creating a new connection to tracker_name@host. This constructor will
-     * register timer callbacks on nh to call mainloop.
-     */
-    VrpnTrackerRos(std::string tracker_name, std::string host, rclcpp::Node::SharedPtr nh);
+  VrpnTrackerRos(
+    const std::string & raw_tracker_name,
+    const std::string & tracker_topic_name,
+    ConnectionPtr connection,
+    rclcpp::Node::SharedPtr node,
+    const TrackerOptions & options);
 
-    ~VrpnTrackerRos();
+  ~VrpnTrackerRos();
 
-    /**
-     * Call mainloop of underlying vrpn_Tracker_Remote
-     */
-    void mainloop();
+  void mainloop();
 
-  private:
-    TrackerRemotePtr tracker_remote_;
-    std::vector<rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr> pose_pubs_;
-    std::vector<rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr> twist_pubs_;
-    std::vector<rclcpp::Publisher<geometry_msgs::msg::AccelStamped>::SharedPtr> accel_pubs_;
-    rclcpp::Node::SharedPtr output_nh_;
-    bool use_server_time_, broadcast_tf_, process_sensor_id_;
-    std::string tracker_name, topic_name;
+private:
+  using PosePublisher = rclcpp::Publisher<geometry_msgs::msg::PoseStamped>;
+  using TwistPublisher = rclcpp::Publisher<geometry_msgs::msg::TwistStamped>;
+  using AccelPublisher = rclcpp::Publisher<geometry_msgs::msg::AccelStamped>;
 
-    rclcpp::TimerBase::SharedPtr mainloop_timer;
+  static void VRPN_CALLBACK handle_pose(void * user_data, const vrpn_TRACKERCB tracker_pose);
+  static void VRPN_CALLBACK handle_twist(
+    void * user_data,
+    const vrpn_TRACKERVELCB tracker_twist);
+  static void VRPN_CALLBACK handle_accel(
+    void * user_data,
+    const vrpn_TRACKERACCCB tracker_accel);
 
-    geometry_msgs::msg::PoseStamped pose_msg_;
-    geometry_msgs::msg::TwistStamped twist_msg_;
-    geometry_msgs::msg::AccelStamped accel_msg_;
-    geometry_msgs::msg::TransformStamped transform_stamped_;
-    std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+  builtin_interfaces::msg::Time get_stamp(const timeval & msg_time) const;
+  std::string make_topic_name(int sensor_id, const std::string & suffix) const;
+  std::string make_child_frame_id(int sensor_id) const;
+  PosePublisher::SharedPtr get_pose_publisher(int sensor_id);
+  TwistPublisher::SharedPtr get_twist_publisher(int sensor_id);
+  AccelPublisher::SharedPtr get_accel_publisher(int sensor_id);
 
-    void init(std::string tracker_name, rclcpp::Node::SharedPtr, bool create_mainloop_timer);
+  TrackerRemotePtr tracker_remote_;
+  rclcpp::Node::SharedPtr node_;
+  TrackerOptions options_;
+  std::string raw_tracker_name_;
+  std::string tracker_topic_name_;
 
-    static void VRPN_CALLBACK handle_pose(void *userData, const vrpn_TRACKERCB tracker_pose);
+  std::unordered_map<int, PosePublisher::SharedPtr> pose_pubs_;
+  std::unordered_map<int, TwistPublisher::SharedPtr> twist_pubs_;
+  std::unordered_map<int, AccelPublisher::SharedPtr> accel_pubs_;
+  std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+};
 
-    static void VRPN_CALLBACK handle_twist(void *userData, const vrpn_TRACKERVELCB tracker_twist);
+class VrpnClientRos : public rclcpp::Node
+{
+public:
+  using Ptr = std::shared_ptr<VrpnClientRos>;
+  using TrackerMap = std::unordered_map<std::string, VrpnTrackerRos::Ptr>;
 
-    static void VRPN_CALLBACK handle_accel(void *userData, const vrpn_TRACKERACCCB tracker_accel);
-  };
+  explicit VrpnClientRos(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
 
-  class VrpnClientRos : public rclcpp::Node
-  {
-  public:
+  void initialize();
+  std::string get_host_string_from_params() const;
+  void mainloop();
+  void update_trackers();
 
-    typedef std::shared_ptr<VrpnClientRos> Ptr;
-    typedef std::unordered_map<std::string, VrpnTrackerRos::Ptr> TrackerMap;
+private:
+  void read_parameters();
+  void validate_parameters() const;
+  void create_tracker(const std::string & raw_tracker_name);
+  std::string make_unique_tracker_name(const std::string & raw_tracker_name);
+  static std::string sanitize_name_segment(
+    const std::string & value,
+    const std::string & fallback);
+  static std::string normalize_topic_prefix(const std::string & value);
 
-    /**
-     * Create and initialize VrpnClientRos object in the private_nh namespace.
-     */
-    VrpnClientRos();
+  bool initialized_{false};
+  std::string host_;
+  int port_{3883};
+  double update_frequency_{100.0};
+  double refresh_tracker_frequency_{1.0};
+  std::vector<std::string> configured_trackers_;
+  TrackerOptions tracker_options_;
 
-    std::string getHostStringFromParams();
+  ConnectionPtr connection_;
+  bool connection_doing_okay_{true};
+  rclcpp::Time last_connection_poll_time_;
+  TrackerMap trackers_;
+  std::unordered_set<std::string> tracker_topic_names_;
+  std::unordered_set<std::string> sender_blacklist_{"VRPN Control"};
 
-    /**
-     * Call mainloop of underlying VRPN connection and all registered VrpnTrackerRemote objects.
-     */
-    void mainloop();
+  rclcpp::TimerBase::SharedPtr refresh_tracker_timer_;
+  rclcpp::TimerBase::SharedPtr mainloop_timer_;
+};
 
-    /**
-     * Examine vrpn_Connection's senders and create new trackers as necessary.
-     */
-    void updateTrackers();
+}  // namespace vrpn_client_ros2
 
-  private:
-    std::string host_;
-
-    /**
-     * Underlying VRPN connection object
-     */
-    ConnectionPtr connection_;
-
-    /**
-     * Map of registered trackers, accessible by name
-     */
-    TrackerMap trackers_;
-    
-    rclcpp::TimerBase::SharedPtr refresh_tracker_timer_, mainloop_timer;
-  };
-}  // namespace vrpn_client_ros
-
-#endif  // VRPN_CLIENT_ROS_VRPN_CLIENT_ROS_H
+#endif  // VRPN_CLIENT_ROS2__VRPN_CLIENT_ROS2_H_
